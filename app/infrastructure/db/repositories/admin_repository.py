@@ -1,39 +1,85 @@
 from app.infrastructure.db.database_manager import DatabaseManager
+from mysql.connector import Error
 
 class AdminRepository:
+    """
+    REPOSITORY : Fournit les outils de gestion et de statistiques à l'Admin.
+    Centralise les requêtes de surveillance et de modération.
+    """
     def __init__(self):
-        self.__db = DatabaseManager().get_connection()
+        self.__db_manager = DatabaseManager()
 
-    def lister_kyc_en_attente(self):
-        cursor = self.__db.cursor(dictionary=True)
-        query = "SELECT d.*, u.nom FROM documents_kyc d JOIN utilisateurs u ON d.fournisseur_id = u.id WHERE d.est_valide = FALSE"
-        cursor.execute(query)
-        return cursor.fetchall()
-
-    def valider_fournisseur(self, fournisseur_id: int):
-        cursor = self.__db.cursor()
+    def obtenir_fournisseurs_en_attente(self):
+        """Récupère la liste des chefs qui n'ont pas encore été validés par l'admin."""
+        connection = self.__db_manager.get_connection()
+        cursor = connection.cursor(dictionary=True)
         try:
-            # On valide le document ET le statut du fournisseur
-            cursor.execute("UPDATE documents_kyc SET est_valide = TRUE WHERE fournisseur_id = %s", (fournisseur_id,))
-            cursor.execute("UPDATE utilisateurs SET kyc_valide = TRUE WHERE id = %s", (fournisseur_id,))
-            self.__db.commit()
-            return True
-        except Exception as e:
-            self.__db.rollback()
-            return False
+            query = """
+                SELECT u.id, u.nom, u.email, f.biographie 
+                FROM utilisateurs u
+                JOIN fournisseurs f ON u.id = f.utilisateur_id
+                WHERE f.kyc_valide = 0
+            """
+            cursor.execute(query)
+            return cursor.fetchall()
+        finally:
+            cursor.close()
 
-    def ajouter_categorie(self, libelle: str):
-        cursor = self.__db.cursor()
-        cursor.execute("INSERT INTO categories (libelle) VALUES (%s)", (libelle,))
-        self.__db.commit()
-    def ajouter_document_kyc(self, fournisseur_id: int, type_doc: str, url: str) -> bool:
-        cursor = self.__db.cursor()
-        query = """INSERT INTO documents_kyc (fournisseur_id, type_doc, fichier_url) 
-                   VALUES (%s, %s, %s)"""
+    def activer_fournisseur(self, chef_id: int) -> bool:
+        """Valide officiellement le compte d'un chef."""
+        connection = self.__db_manager.get_connection()
+        cursor = connection.cursor()
         try:
-            cursor.execute(query, (fournisseur_id, type_doc, url))
-            self.__db.commit()
-            return True
-        except Exception as e:
-            print(f"❌ Erreur SQL KYC : {e}")
+            query = "UPDATE fournisseurs SET kyc_valide = 1 WHERE utilisateur_id = %s"
+            cursor.execute(query, (chef_id,))
+            connection.commit()
+            return cursor.rowcount > 0
+        except Error:
+            connection.rollback()
             return False
+        finally:
+            cursor.close()
+
+    def ajouter_categorie(self, libelle: str) -> bool:
+        """Insère une nouvelle catégorie de menu dans le système."""
+        connection = self.__db_manager.get_connection()
+        cursor = connection.cursor()
+        try:
+            query = "INSERT INTO categories (libelle) VALUES (%s)"
+            cursor.execute(query, (libelle,))
+            connection.commit()
+            return True
+        except Error:
+            connection.rollback()
+            return False
+        finally:
+            cursor.close()
+
+    def calculer_statistiques_globales(self) -> dict:
+        """
+        Agrégation SQL pour le tableau de bord Admin.
+        Récupère le CA, le nombre d'utilisateurs et de commandes.
+        """
+        connection = self.__db_manager.get_connection()
+        cursor = connection.cursor(dictionary=True)
+        stats = {}
+        try:
+            # Compte des utilisateurs
+            cursor.execute("SELECT COUNT(*) as total FROM utilisateurs")
+            stats['users_count'] = cursor.fetchone()['total']
+
+            # Chiffre d'affaires total (uniquement les commandes confirmées)
+            cursor.execute("SELECT SUM(montant_total) as CA FROM commandes WHERE statut = 'CONFIRME'")
+            res_ca = cursor.fetchone()
+            stats['total_revenue'] = res_ca['CA'] if res_ca['CA'] else 0.0
+
+            # Commandes passées aujourd'hui
+            cursor.execute("SELECT COUNT(*) as j FROM commandes WHERE DATE(date_commande) = CURDATE()")
+            stats['orders_today'] = cursor.fetchone()['j']
+
+            return stats
+        except Error as e:
+            print(f"❌ Erreur Stats Admin : {e}")
+            return {"users_count": 0, "total_revenue": 0.0, "orders_today": 0}
+        finally:
+            cursor.close()

@@ -80,4 +80,4 @@ class ClientUI:
         plats = self.catalog.consulter_par_categorie(cat)
         for p in plats:
             print(f"[{p['id']}] {p['titre']} - {p['prix']} DH")
-        input("\nAppuyez sur Entrée...")
+        input("\nAppuyez sur Entrée")

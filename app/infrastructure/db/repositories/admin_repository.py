@@ -1,0 +1,28 @@
+from app.infrastructure.db.database_manager import DatabaseManager
+
+class AdminRepository:
+    def __init__(self):
+        self.__db = DatabaseManager().get_connection()
+
+    def lister_kyc_en_attente(self):
+        cursor = self.__db.cursor(dictionary=True)
+        query = "SELECT d.*, u.nom FROM documents_kyc d JOIN utilisateurs u ON d.fournisseur_id = u.id WHERE d.est_valide = FALSE"
+        cursor.execute(query)
+        return cursor.fetchall()
+
+    def valider_fournisseur(self, fournisseur_id: int):
+        cursor = self.__db.cursor()
+        try:
+            # On valide le document ET le statut du fournisseur
+            cursor.execute("UPDATE documents_kyc SET est_valide = TRUE WHERE fournisseur_id = %s", (fournisseur_id,))
+            cursor.execute("UPDATE utilisateurs SET kyc_valide = TRUE WHERE id = %s", (fournisseur_id,))
+            self.__db.commit()
+            return True
+        except Exception as e:
+            self.__db.rollback()
+            return False
+
+    def ajouter_categorie(self, libelle: str):
+        cursor = self.__db.cursor()
+        cursor.execute("INSERT INTO categories (libelle) VALUES (%s)", (libelle,))
+        self.__db.commit()

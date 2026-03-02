@@ -1,38 +1,4 @@
 from app.infrastructure.db.database_manager import DatabaseManager
-# À ajouter dans OrderRepository
-def modifier_statut(self, order_id: int, nouveau_statut: str) -> bool:
-    cursor = self.__db.cursor()
-    query = "UPDATE commandes SET statut = %s WHERE id = %s"
-    try:
-        cursor.execute(query, (nouveau_statut, order_id))
-        self.__db.commit()
-        return True
-    except Exception as e:
-        print(f"❌ Erreur SQL changement statut : {e}")
-        return False
-def executer_sequestre(self, client_id: int, montant: float, commande_id: int) -> bool:
-    cursor = self.__db.cursor()
-    try:
-        self.__db.start_transaction()
-        
-        # 1. Vérification et débit du solde client
-        cursor.execute("UPDATE utilisateurs SET solde = solde - %s WHERE id = %s AND solde >= %s", 
-                       (montant, client_id, montant))
-        
-        if cursor.rowcount == 0:
-            raise Exception("Solde insuffisant")
-
-        # 2. Création de l'enregistrement de séquestre
-        query = "INSERT INTO paiements_sequestre (commande_id, montant, statut) VALUES (%s, %s, 'BLOQUE')"
-        cursor.execute(query, (commande_id, montant))
-        
-        self.__db.commit()
-        return True
-    except Exception as e:
-        self.__db.rollback()
-        print(f"❌ Échec séquestre : {e}")
-        return False
-
 
 class OrderRepository:
     def _init_(self):
@@ -69,3 +35,57 @@ class OrderRepository:
             self.__db.rollback()
             print(f"❌ Erreur Transaction Commande : {e}")
             return None
+    def finaliser_paiement_fournisseur(self, commande_id: int, chef_id: int, montant: float) -> bool:
+        cursor = self.__db.cursor()
+        try:
+            self.__db.start_transaction()
+            
+            # 1. Clôturer le séquestre
+            cursor.execute("UPDATE paiements_sequestre SET statut = 'LIBERE' WHERE commande_id = %s", (commande_id,))
+            
+            # 2. Créditer le fournisseur
+            cursor.execute("UPDATE utilisateurs SET solde = solde + %s WHERE id = %s", (montant, chef_id))
+            
+            # 3. Marquer la commande comme CONFIRMEE
+            cursor.execute("UPDATE commandes SET statut = 'CONFIRME' WHERE id = %s", (commande_id,))
+            
+            self.__db.commit()
+            return True
+        except Exception as e:
+            self.__db.rollback()
+            print(f"❌ Erreur libération fonds : {e}")
+            return False
+   
+    # À ajouter dans OrderRepository
+    def modifier_statut(self, order_id: int, nouveau_statut: str) -> bool:
+        cursor = self.__db.cursor()
+        query = "UPDATE commandes SET statut = %s WHERE id = %s"
+        try:
+            cursor.execute(query, (nouveau_statut, order_id))
+            self.__db.commit()
+            return True
+        except Exception as e:
+            print(f"❌ Erreur SQL changement statut : {e}")
+            return False
+    def executer_sequestre(self, client_id: int, montant: float, commande_id: int) -> bool:
+        cursor = self.__db.cursor()
+        try:
+            self.__db.start_transaction()
+            
+            # 1. Vérification et débit du solde client
+            cursor.execute("UPDATE utilisateurs SET solde = solde - %s WHERE id = %s AND solde >= %s", 
+                        (montant, client_id, montant))
+            
+            if cursor.rowcount == 0:
+                raise Exception("Solde insuffisant")
+
+            # 2. Création de l'enregistrement de séquestre
+            query = "INSERT INTO paiements_sequestre (commande_id, montant, statut) VALUES (%s, %s, 'BLOQUE')"
+            cursor.execute(query, (commande_id, montant))
+            
+            self.__db.commit()
+            return True
+        except Exception as e:
+            self.__db.rollback()
+            print(f"❌ Échec séquestre : {e}")
+            return False

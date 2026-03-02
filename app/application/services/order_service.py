@@ -15,6 +15,11 @@ class OrderService:
     def _init_(self, order_repo):
         self.repo = order_repo
 
+    # ...
+    def confirmer_reception(self, commande_id: int, chef_id: int, montant: float):
+        # Appel au repository pour le transfert final
+        return self.repo.finaliser_paiement_fournisseur(commande_id, chef_id, montant)
+    
     def valider_panier(self, beneficiaire_id: int, articles_panier: list):
         if not articles_panier:
             return None

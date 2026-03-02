@@ -1,3 +1,13 @@
+
+def confirmer_commande_ui(order_service, client_id):
+    print("\n--- CONFIRMATION DE RÉCEPTION ---")
+    oid = int(input("Entrez l'ID de la commande reçue : "))
+    # Dans la vraie app, on récupère le montant et le chef_id via l'ID commande
+    if order_service.confirmer_reception(oid, chef_id=12, montant=150.0):
+        print("✅ Merci ! Les fonds ont été libérés au Chef.")
+    else:
+        print("❌ Une erreur est survenue lors de la confirmation.")
+        
 def menu_beneficiaire(auth_service, meal_repo, panier_service):
     while True:
         print("\n--- ESPACE BÉNÉFICIAIRE ---")
